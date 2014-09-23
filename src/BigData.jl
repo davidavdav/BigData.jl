@@ -4,3 +4,4 @@ include("types.jl")
 iclude("data.jl")
 
 export Data, kind, dmap, stats
+end
