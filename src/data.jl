@@ -80,18 +80,22 @@ function dmap(f::Function, x::Data)
 end
 
 ## stats: compute nth order stats for array
-function stats{T<:FloatingPoint}(x::Matrix{T}, order::Int=2; kind=:diag)
-    n, d = size(x)
+function stats{T<:FloatingPoint}(x::Matrix{T}, order::Int=2; kind=:diag, dim=1)
+    n, d = nthperm([size(x)...], dim) ## swap or not trick
     if kind == :diag
         if order == 2
-            return n, vec(sum(x,1)), vec(sumsq(x, 1))   # NumericExtensions is fast
+            return n, vec(sum(x, dim)), vec(sumsq(x, dim))   # NumericExtensions is fast
         elseif order == 1
-            return n, vec(sum(x,1))
+            return n, vec(sum(x, dim))
         else
             sx = zeros(T, order, d)
             for j=1:d
                 for i=1:n
-                    xi = xp = x[i,j]
+                    if dim==1
+                        xi = xp = x[i,j]
+                    else
+                        xi = xp = x[j,i]
+                    end
                     sx[1,j] += xp
                     for o=2:order
                         xp *= xi
@@ -99,14 +103,14 @@ function stats{T<:FloatingPoint}(x::Matrix{T}, order::Int=2; kind=:diag)
                     end
                 end
             end
-            return {n, map(i->vec(sx[i,:]), 1:order)...}
+            return tuple({n, map(i->vec(sx[i,:]), 1:order)...}...)
         end
     elseif kind == :full
         order == 2 || error("Can only do covar starts for order=2")
         ## lazy implementation
-        sx = vec(sum(x, 1))
+        sx = vec(sum(x, dim))
         sxx = x' * x
-        return {n, sx, sxx}
+        return n, sx, sxx
     end
 end
 
@@ -119,11 +123,19 @@ end
 Base.zero(t::Tuple) = map(zero, t)
 
 ## this function calls pmap as an option for parallelism
-function stats(d::Data, order::Int=2; kind=:diag)
-    s = dmap(x->stats(x, order, kind=kind), d)
-    reduce(+, s)     
+function stats(d::Data, order::Int=2; kind=:diag, dim=1)
+    s = dmap(x->stats(x, order, kind=kind, dim=dim), d)
+    if dim==1
+        return reduce(+, s)
+    else
+        ## this is admittedly hairy: vertically concatenate each element of stats
+        n = s[1][1]
+        st = map(i->reduce(vcat, [x[i] for x in s]), 1+(1:order))
+        return tuple(n, st...)
+    end
 end
 
+## sum, mean, var
 function Base.sum(d::Data)
     s = zero(d.datatype)
     for x in d
@@ -132,31 +144,37 @@ function Base.sum(d::Data)
     return s
 end
 
-function Base.sum(d::Data, dim::Int)
-    if dim==1                           # the `fast' direction
-        return stats(d,1)[2]
-    else
-        if length(d)>1
-            s = zeros(d.datatype, size(d[1], 1))
-            for x in d
-                s += sum(x, dim)
-            end
-            return s
-        else
-            return nothing
-        end
-    end
-end
+Base.sum(d::Data, dim::Int) = stats(d,1, dim=dim)[2]
 
 function Base.mean(d::Data)
     n, sx = stats(d, 1)
-    sx ./ n
+    sum(sx) / (n*length(sx))
+end
+
+ function Base.mean(d::Data, dim::Int)
+     n, sx = stats(d, 1, dim=dim)
+     return sx ./ n
 end
 
 function Base.var(d::Data)
     n, sx, sxx = stats(d, 2)
+    n *= length(sx)
+    ssx = sum(sx)                       # keep type stability...
+    ssxx = sum(sxx)
+    μ = ssx / n
+    return (ssxx - n*μ^2) / (n - 1)
+end
+    
+function Base.var(d::Data, dim::Int)
+    n, sx, sxx = stats(d, 2, dim=dim)
     μ = sx ./ n
     (sxx - n*μ.^2) ./ (n-1)
+end
+
+function Base.cov(d::Data)
+    n, sx, sxx = stats(d, 2, kind=:full)
+    μ = sx ./ n
+    (sxx - n*μ*μ') ./ (n-1)
 end
 
 ## this is potentially very slow because it reads all file just to find out the size
@@ -181,3 +199,5 @@ function Base.size(d::Data, dim::Int)
         size(d)[dim]
     end
 end
+
+Base.collect(d::Data) = vcat([x for x in d]...)
