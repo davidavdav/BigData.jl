@@ -3,6 +3,41 @@ BigData.jl
 
 Handle very tall matrices that are naturally split in separate files. 
 
+Synopsis
+--------
+
+```Julia
+## generate some random data
+x = [rand(1000+rand(0:10), 10) for i=1:10] 
+d = Data(x)
+s = zeros(size(d,2))'
+for xx in d
+  s += sum(xx, 1)
+end
+println(s)
+## using a parallel computation
+s = sum(vcat(dmap(x->sum(x,1), d)...),1)
+## same, but use data from disc
+## first write the data
+using HDF5, JLD
+files = String[]
+for i=1:length(x)
+    append!(files, [string(i, ".jld")])
+    save(last(files), "x", x[i])
+end
+## then use it in a data structure
+myread(f::String) = load(f)["x"]
+d = Data(files, Float64, myread)
+s = zeros(size(d,2))'
+for xx in d
+  s += sum(xx, 1)
+end
+println(s)
+## or, of course
+sum(d,1)
+```
+
+
 BigData (admittedly, a somewhat grand name) provides some basic infrastructure for working with matrix-like data structures that are too large to fit in memory.  It provides methods to compute basic statistics over the data, an iterator and more. 
 
 The basic premise is that the data is organized in a large collection of files, and that in each file a matrix is stored with the same number of columns, but a variable number of rows.  A typical example is a sequence of row-vectors stacked to form a matrix, and organized in files as a result of some production process.  
@@ -61,16 +96,16 @@ In the following, `d` is of type `Data`.
  - `collect(d)` turn the Data structure into a single matrix. 
  - `sum(d)` return the overall sum of the elements in `d`. 
  - `sum(d, dim)` return the sum over `d` along dimension `dim`.  This is most efficient when `dim=1`. 
- - `stats(d, order=2, kind=:diagm, dim=1)` compute 0th, 1st, ..., `order`th order statistics of the data along dimension `dim`.  If `kind==:full`, the full 2nd order scatter matrix for the row data is returned. 
+ - `stats(d, order=2, kind=:diag, dim=1)` compute 0th, 1st, ..., `order`th order statistics of the data along dimension `dim`.  If `kind==:full`, the full 2nd order scatter matrix for the row data is returned. 
  - `mean(d [, dim])` compute the mean, optionally over dimension `dim`.  
- - `var(d [, dim])` compute the variance over rows, touching all data only once.  
+ - `var(d [, dim])` compute the variance over rows (or columns if `dim=1`), touching all data only once.  
  - `cov(d)` compute the covariance over row vectors.  
 
 All of these functions may be less efficient than their counterparts from NumericExtensions, and this will hold especially if the data needs to be loaded from disc.  The main application for these functions is with `dim=1`, but we have also implementations without `dim` argument and with `dim=2`.  
 
 Usage
 -----
-Once the data (or the file lists) is loaded into a `Data` object, it is easiest to work with the iterator (`for x in d`) or index constructions (`for i = 1:length(d) somefunction(d[i]) end`).  Some functionality can quite effectively be obtained using the general `stats()` function.  For instance, consider the implementation of `cov()` below:
+Once the data (or the file lists) is loaded into a `Data` object, it is easiest to work with the iterator (`for x in d`) or index constructions (`for i = 1:length(d) somefunction(d[i]) end`).   Some functionality can quite effectively be obtained using the general `stats()` function.  For instance, consider the implementation of `cov()` below:
 
 ```julia
 function Base.cov(d::Data)
