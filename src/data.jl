@@ -5,7 +5,7 @@
 using NumericExtensions
 
 ## constructor for a plain matrix.  rowvectors: data points x represented as rowvectors
-function Data{T<:FloatingPoint}(x::Matrix{T}, rowvectors=true) 
+function Data{T}(x::Matrix{T}, rowvectors=true) 
     if rowvectors
         Data(T, Matrix{T}[x], nothing)
     else
@@ -15,7 +15,7 @@ end
 
 ## constructor for a vector of plain matrices
 ## x = Matrix{Float64}[rand(1000,10), rand(1000,10)]
-function Data{T<:FloatingPoint}(x::Vector{Matrix{T}}, rowvectors=true)
+function Data{T}(x::Vector{Matrix{T}}, rowvectors=true)
     if rowvectors
         Data(T, x, nothing)
     else
@@ -135,6 +135,15 @@ function stats(d::Data, order::Int=2; kind=:diag, dim=1)
     end
 end
 
+## helper function to get summary statistics in traditional shape
+function retranspose(x::Array, dim::Int)
+    if dim==1
+        return x'
+    else
+        return x
+    end
+end
+
 ## sum, mean, var
 function Base.sum(d::Data)
     s = zero(d.datatype)
@@ -144,7 +153,7 @@ function Base.sum(d::Data)
     return s
 end
 
-Base.sum(d::Data, dim::Int) = stats(d,1, dim=dim)[2]
+Base.sum(d::Data, dim::Int) = retranspose(stats(d,1, dim=dim)[2], dim)
 
 function Base.mean(d::Data)
     n, sx = stats(d, 1)
@@ -153,7 +162,7 @@ end
 
  function Base.mean(d::Data, dim::Int)
      n, sx = stats(d, 1, dim=dim)
-     return sx ./ n
+     return retranspose(sx ./ n, dim)
 end
 
 function Base.var(d::Data)
@@ -168,7 +177,7 @@ end
 function Base.var(d::Data, dim::Int)
     n, sx, sxx = stats(d, 2, dim=dim)
     μ = sx ./ n
-    (sxx - n*μ.^2) ./ (n-1)
+    return retranspose((sxx - n*μ.^2) ./ (n-1), dim)
 end
 
 function Base.cov(d::Data)
