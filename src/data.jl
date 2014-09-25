@@ -210,3 +210,15 @@ function Base.size(d::Data, dim::Int)
 end
 
 Base.collect(d::Data) = vcat([x for x in d]...)
+for (f,t) in ((:float32, Float32), (:float64, Float64))
+    eval(Expr(:import, :Base, f))
+    @eval begin
+        function ($f)(d::Data) 
+            if kind(d) == :files
+                Data($t, d.list, d.read)
+            else
+                Data($t, [($f)(x) for x in d.list], nothing)
+            end
+        end
+    end
+end
