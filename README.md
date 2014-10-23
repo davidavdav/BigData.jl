@@ -1,5 +1,6 @@
 BigData.jl
 ==========
+[![Build Status](https://travis-ci.org/davidavdav/BigData.jl.svg)](https://travis-ci.org/davidavdav/BigData.jl)
 
 Handle very tall matrices that are naturally split in separate files. 
 
