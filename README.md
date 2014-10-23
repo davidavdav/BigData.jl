@@ -23,10 +23,10 @@ using HDF5, JLD
 files = String[]
 for i=1:length(x)
     append!(files, [string(i, ".jld")])
-    save(last(files), "x", x[i])
+    save(last(files), "data", x[i])
 end
 ## then use it in a data structure
-myread(f::String) = load(f)["x"]
+myread(f::String) = load(f, "data")
 d = Data(files, Float64, myread)
 s = zeros(size(d,2))'
 for xx in d
