@@ -1,50 +1,78 @@
 ## data.jl Julia code to handle matrix-type data on disc
 
-# require("gmmtypes.jl")
-
-using NumericExtensions
-
-## constructor for a plain matrix.  rowvectors: data points x represented as rowvectors
-function Data{T}(x::Matrix{T}, rowvectors=true) 
-    if rowvectors
-        Data(T, Matrix{T}[x], nothing)
-    else
-        Data(T, Matrix{T}[x'], nothing)
-    end
-end
-
 ## constructor for a vector of plain matrices
 ## x = Matrix{Float64}[rand(1000,10), rand(1000,10)]
-function Data{T}(x::Vector{Matrix{T}}, rowvectors=true)
+function Data{T}(x::Vector{Matrix{T}}; rowvectors=true)
     if rowvectors
-        Data(T, x, nothing)
+        Data(T, x, Dict{Symbol,Function}())
     else
-        Data(T, map(transpose, x), nothing)
+        Data(T, map(transpose, x), Dict{Symbol,Function})
     end
 end
 
-## constructor for a plain file.
-function Data(file::String, datatype::Type, read::Function)
-    Data(datatype, [file], read)
+## constructor for a plain matrix.  rowvectors: data points x represented as rowvectors
+function Data(x::Matrix; rowvectors=true) 
+    T = eltype(x)
+    if rowvectors
+        Data(Matrix{T}[x])
+    else
+        Data(Matrix{T}[x']) 
+    end
 end
 
 ## constructor for a vector of files
-function Data{S<:String}(files::Vector{S}, datatype::Type, read::Function)
-    Data(datatype, files, read)
+## Data([strings], type, loadfunction)
+function Data{S<:String}(files::Vector{S}, datatype::DataType, load::Function)
+    Data(datatype, files, Dict(:load => load))
 end
 
+## default load function
+function _load(file::String)
+    load(file, "data")
+end
+
+## default size function
+function _size(file::String)
+    jldopen(file) do fd
+        size(fd["data"])
+    end
+end
+
+## courtesy compatible save for a matrix
+function JLD.save(file::String, x::Matrix)
+    save(file,"data", x)
+end
+
+## Data([strings], type; load=loadfunction, size=sizefunction)
+function Data{S<:String}(files::Vector{S}, datatype::DataType; kwargs...) 
+    all([isa((k,v), (Symbol,Function)) for (k,v) in kwargs]) || error("Wrong type of argument", args)
+    d = Dict{Symbol,Function}([kwargs...])
+    if !haskey(d, :load)
+        d[:load] = _load
+        d[:size] = _size
+    end
+    Data(datatype, files, d)
+end
+
+## constructor for a plain file.
+Data(file::String, datatype::DataType, load::Function) = Data([file], datatype, load)
+Data(file::String, datatype::DataType; kwargs...) = Data([file], datatype; kwargs...)
+
 kind(x::Data) = eltype(x.list) <: String ? :file : :matrix
+
+## is this really a shortcut?
+API(d::Data, f::Symbol) = d.API[f]
 
 function getindex(x::Data, i::Int) 
     if kind(x) == :matrix
         x.list[i]
     else
-        x.read(x.list[i])
+        x.API[:load](x.list[i])
     end
 end
 
-function getindex(x::Data, r::Range1)
-    Data(x.datatype, x.list[r], x.read)
+function getindex(x::Data, r::Range)
+    Data(x.datatype, x.list[r], x.API)
 end
 
 ## define an iterator for Data
@@ -64,12 +92,12 @@ function dmap(f::Function, x::Data)
         worker(i) = w[1 .+ ((i-1) % nw)]
         results = cell(nx)
         getnext(i) = x.list[i]
-        read = x.read
+        load = x.API[:load]
         @sync begin
             for i = 1:nx
                 @async begin
                     next = getnext(i)
-                    results[i] = remotecall_fetch(worker(i), s->f(read(s)), next)
+                    results[i] = remotecall_fetch(worker(i), s->f(load(s)), next)
                 end
             end
         end
@@ -103,7 +131,7 @@ function stats{T<:FloatingPoint}(x::Matrix{T}, order::Int=2; kind=:diag, dim=1)
                     end
                 end
             end
-            return tuple({n, map(i->vec(sx[i,:]), 1:order)...}...)
+            return tuple([n, map(i->vec(sx[i,:]), 1:order)...]...)
         end
     elseif kind == :full
         order == 2 || error("Can only do covar starts for order=2")
@@ -188,7 +216,11 @@ end
 
 ## this is potentially very slow because it reads all file just to find out the size
 function Base.size(d::Data)
-    s = dmap(size, d)
+    if kind(d) == :file && :size in d.API
+        s = dmap(d.API[:size], d.list)
+    else
+        s = dmap(size, d)
+    end
     nrow, ncol = s[1]
     ok = true
     for i in 2:length(s)
@@ -215,7 +247,7 @@ for (f,t) in ((:float32, Float32), (:float64, Float64))
     @eval begin
         function ($f)(d::Data) 
             if kind(d) == :files
-                Data($t, d.list, d.read)
+                Data($t, d.list, d.API[:load])
             else
                 Data($t, [($f)(x) for x in d.list], nothing)
             end
