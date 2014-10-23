@@ -1,5 +1,6 @@
 BigData.jl
 ==========
+[![Build Status](https://travis-ci.org/davidavdav/BigData.jl.svg)](https://travis-ci.org/davidavdav/BigData.jl)
 
 Handle very tall matrices that are naturally split in separate files. 
 
@@ -23,10 +24,10 @@ using HDF5, JLD
 files = String[]
 for i=1:length(x)
     append!(files, [string(i, ".jld")])
-    save(last(files), "x", x[i])
+    save(last(files), "data", x[i])
 end
 ## then use it in a data structure
-myread(f::String) = load(f)["x"]
+myread(f::String) = load(f, "data")
 d = Data(files, Float64, myread)
 s = zeros(size(d,2))'
 for xx in d
@@ -52,17 +53,33 @@ Constructors
 ```julia
 d = Data(x::Vector{Matrix})
 ```
-This creates a `Data` object formed by alist of matrices, which should all have the same number of columns. 
+This creates a `Data` object formed by a list of matrices, which should all have the same number of columns. 
 
 ```julia
-d = Data(list::Vector{String}, datatype::Type, read::Function)
+d = Data(list::Vector{String}, datatype::Type, load::Function)
+d = Data(list::Vector{String}, datatype::Type; load=Function, size=Function)
 ```
-This creates a `Data` object consisting of data stored in files in `list`.  The data will be loaded when needed by means of a user function specified by `read`. 
+This creates a `Data` object consisting of data stored in files in `list`.  The data will be loaded when needed by means of a user function specified by `load`.  In the second form, one can also specify a `size()` function that can be more efficient than loading the entire matrix and determining the size afterwards. 
+
+If no `load ` argument is given, the constructor supplies default functions that boil down to:
+```julia
+## default load function
+function load(file::String)
+    JLD.load(file, "data")
+end
+
+## default size function
+function size(file::String)
+    jldopen(file) do fd
+        Base.size(fd["data"])
+    end
+end
+```
 
 Accessing individual parts
 --------------------------
 
-Regardless if the data is in memory or stored on disc, the actual data can be accessed by indexing or by iteration:
+Regardless whether the data is in memory or stored on disc, the actual data can be accessed by indexing or by iteration:
 ```julia
 ## indexing
 for i in 1:length(d)
@@ -78,7 +95,7 @@ A range subset, as in `d[3:5]` is supported, and returns a new `Data` object rep
 
 Parallell execution
 -------------------
-In principle, `pmap()` works on a `Data` object, but it may be more efficient in a computing cluster to use a similar function, `dmap()`.  This function makes sure that the same file is always processed by the same CPU in the cluster, so that local caching of data may speed up the loading of the data into memory and reduce network traffic. 
+In principle, `pmap()` works on a `Data` object, but it may be more efficient in a computing cluster to use a similar function, `dmap()`.  This function makes sure that the same file is always processed by the same CPU in the cluster, so that local caching of data may speed up the loading of the data into memory and reduce network traffic.  Also special care is taken that the actual loading of the data from disc happens on the machine that operates on the data, so that between-node julia-to-julia transfer is minimal. 
 
 ```julia
 ## example of using dmap
