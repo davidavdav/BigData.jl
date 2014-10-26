@@ -107,7 +107,7 @@ Please note that the example function `sum()` (especially the version from Numer
 Basic functions
 ---------------
 In the following, `d` is of type `Data`. 
- - `size(d)` compute the total size of `d` when all data is stacked vertically.  It is verified that all elements of `d` have the same number of columns.  This may be very slow, because currently all data is read by the `read` function specified in the coonstructor, just to determine the resulting matrix size.
+ - `size(d)` compute the total size of `d` when all data is stacked vertically.  It is verified that all elements of `d` have the same number of columns.  If there is not a special `size()` function declared at the construction of `d`, this operation may be very slow, because all data is read by the `read` function, just to determine the resulting matrix size.
  - `length(d)` show the number of sub-matrices listed in `d`. 
  - `eltype(d)` return the element type of the matrices in `d`. 
  - `collect(d)` turn the Data structure into a single matrix. 
