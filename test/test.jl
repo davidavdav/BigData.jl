@@ -1,4 +1,5 @@
 ## test the functionality of BigData
+using HDF5, JLD
 
 Base.isapprox(a::Array, b::Array) = all([isapprox(x, y) for (x,y) in zip(a,b)])
 
