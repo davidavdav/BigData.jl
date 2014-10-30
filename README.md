@@ -2,6 +2,8 @@ BigData.jl
 ==========
 [![Build Status](https://travis-ci.org/davidavdav/BigData.jl.svg)](https://travis-ci.org/davidavdav/BigData.jl)
 
+Please Note: BigData.jl is now integrated with [GaussianMixtures.jl](https://github.com/davidavdav/GaussianMixtures.jl) which is incorporated in METADATA.  So you can install by `Pkg.add("GaussianMixtures")` in Julia. 
+
 Handle very tall matrices that are naturally split in separate files. 
 
 Synopsis
